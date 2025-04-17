@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: airflow-db
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    networks:
+      - analytics-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  spark-master:
+    image: bitnami/spark:latest
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080" # Spark Master UI
+      - "7077:7077" # Spark Master Port
+    networks:
+      - analytics-network
+
+  spark-worker:
+    image: bitnami/spark:latest
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081" # Spark Worker UI
+    networks:
+      - analytics-network
+
+  spark-worker-1:
+    image: bitnami/spark:latest
+    container_name: spark-worker-1
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    depends_on:
+      - spark-master
+    ports:
+      - "8083:8081" # Spark Worker UI
+    networks:
+      - analytics-network
+
+  airflow_init:
+    image: apache/airflow:2.6.0
+    container_name: airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - postgres
+    networks:
+      - analytics-network
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create \
+        --username airflow_admin \
+        --password airflow_password \
+        --firstname Airflow \
+        --lastname Admin \
+        --email email@test.cil \
+        --role Admin &&
+      echo 'Initialization complete with default admin user!'
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "airflow db check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  airflow-webserver:
+    image: apache/airflow:2.6.0
+    container_name: airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    ports:
+      - "8082:8080" # Airflow Web UI
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - postgres
+    networks:
+      - analytics-network
+    command: [ "airflow" , "webserver" ]
+    healthcheck:
+      test: ["CMD-SHELL", "airflow db check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  airflow-scheduler:
+    image: apache/airflow:2.6.0
+    container_name: airflow-scheduler
+    depends_on:
+      - airflow-webserver
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    networks:
+      - analytics-network
+    command: [ "airflow" , "scheduler" ]
+    healthcheck:
+      test: ["CMD-SHELL", "airflow scheduler health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  analytics-network:
+    driver: bridge
+
+volumes:
+  airflow_db_data:
