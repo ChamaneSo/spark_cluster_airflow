@@ -1,4 +1,4 @@
-FROM apache/airflow:2.5.0
+FROM apache/airflow:latest
 
 USER root
 
@@ -14,7 +14,7 @@ COPY dags /usr/local/airflow/dags
 
 EXPOSE 8080 
 
-ENTRYPOINT ["/usr/local/bin/airflow"]
+#ENTRYPOINT ["/usr/local/bin/airflow"]
 
 
 CMD ["airflow", "db" , "init"]
