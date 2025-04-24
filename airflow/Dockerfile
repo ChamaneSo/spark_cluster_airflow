@@ -1,4 +1,4 @@
-FROM apache/airflow:latest
+FROM apache/airflow:2.10.0
 
 USER root
 
@@ -17,4 +17,4 @@ EXPOSE 8080
 #ENTRYPOINT ["/usr/local/bin/airflow"]
 
 
-CMD ["airflow", "db" , "init"]
+#CMD ["airflow", "db" , "init"]
